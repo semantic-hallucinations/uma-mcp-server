@@ -1,0 +1,41 @@
+services:
+  mcp-server:
+    build: .
+    container_name: bsuir-mcp-app
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  postgres:
+    image: postgres:15
+    container_name: bsuir-postgres
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      - ./test_sql_scripts/iis_api_db_layer_init.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+      - ./test_sql_scripts/01_test_data.sql:/docker-entrypoint-initdb.d/01_test_data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: bsuir-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
