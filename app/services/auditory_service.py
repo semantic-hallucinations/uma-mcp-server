@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.db.tables import auditories, occupancy_index
 from app.schemas.auditory import FreeAuditoryItem
 
+
 class AuditoryService:
     def __init__(self, conn: AsyncConnection):
         self.conn = conn
@@ -43,7 +44,7 @@ class AuditoryService:
         )
 
         if building_number is not None:
-            query = query.where(auditories.c.building_number == str(building_number))
+            query = query.where(auditories.c.building_number == f"{building_number} к.")
 
         result = await self.conn.execute(query)
         rows = result.mappings().all()
