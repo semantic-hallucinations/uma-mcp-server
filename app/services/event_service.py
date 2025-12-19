@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import time, datetime
 from typing import Literal, Any
 
 from sqlalchemy import select, and_, or_, func, cast, Time
@@ -114,7 +114,7 @@ class EventService:
         time_check: str | None = None
     ) -> list[ScheduleEventItem]:
         
-        query = self._build_base_query().where(
+        query = select(schedule_events).where(
             schedule_events.c.auditories.any(auditory_name)
         )
 
@@ -122,16 +122,42 @@ class EventService:
         query = query.where(schedule_events.c.day_of_week == day_of_week)
 
         if time_check:
-            t = cast(time_check, Time)
+            try:
+                time_obj = datetime.strptime(time_check, "%H:%M").time()
+            except ValueError:
+                raise ValueError(f"Invalid time format: {time_check}. Expected HH:MM")
+
             query = query.where(and_(
-                schedule_events.c.start_time <= t,
-                schedule_events.c.end_time > t
+                schedule_events.c.start_time <= time_obj,
+                schedule_events.c.end_time > time_obj
             ))
 
         query = query.order_by(schedule_events.c.start_time)
 
         result = await self.conn.execute(query)
-        return [self._process_row(r) for r in result.mappings().all()]
+        return [ScheduleEventItem.model_validate(r) for r in result.mappings().all()]
+    
+    async def get_day_events(
+        self,
+        entity_name: str,
+        week_number: int,
+        day_of_week: int
+    ) -> list[ScheduleEventItem]:
+        """
+        Возвращает расписание сущности на конкретный день недели.
+        """
+        query = select(schedule_events).where(
+            and_(
+                schedule_events.c.entity_name == entity_name,
+                schedule_events.c.day_of_week == day_of_week,
+                schedule_events.c.week_numbers.any(week_number)
+            )
+        )
+        
+        query = query.order_by(schedule_events.c.start_time)
+
+        result = await self.conn.execute(query)
+        return [ScheduleEventItem.model_validate(r) for r in result.mappings().all()]
 
     async def global_subject_search(
         self,

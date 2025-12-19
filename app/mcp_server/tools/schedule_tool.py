@@ -7,12 +7,18 @@ from app.services.schedule_service import ScheduleService
 
 class ScheduleGetArgs(BaseModel):
     entity_type: Literal["group", "employee"]
-    entity_identifier: str = Field(..., description="Group name (e.g. 221703) or Employee FIO/url_id")
+    entity_identifier: str = Field(..., description="Номер группы (например '221703') или ФИО/url_id преподавателя")
 
 
 @registry.tool(
     name="schedule_get",
-    description="Returns full schedule JSON for a group or employee.",
+    description=(
+        "ВНИМАНИЕ: ВОЗВРАЩАЕТ ОГРОМНЫЙ JSON СО ВСЕМ РАСПИСАНИЕМ НА ВЕСЬ СЕМЕСТР. "
+        "Вызывать ТОЛЬКО в крайнем случае, если пользователь явно просит 'Покажи всё расписание целиком' "
+        "и подтвердил это действие. ВСЕГДА спрашивай подтверждение пользователя"
+        "Для конкретных вопросов ('какие пары во вторник?', 'когда математика?') используйте инструменты "
+        "`schedule_get_day` или `schedule_search_event`."
+    ),
     args_model=ScheduleGetArgs
 )
 async def handle_schedule_get(ctx: ToolContext, args: ScheduleGetArgs):

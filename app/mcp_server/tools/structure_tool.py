@@ -6,15 +6,18 @@ from app.services.structure_service import StructureService
 
 
 class DirectoriesGetArgs(BaseModel):
-    directory_name: Literal["faculties", "departments", "specialities", "groups", "employees"]
-    faculty_id: int | None = Field(None, description="Filter by faculty ID (for specialities)")
-    specialty_id: int | None = Field(None, description="Filter by specialty ID (for groups)")
-    department_id: int | None = Field(None, description="Filter by department ID (for employees)")
+    directory_name: Literal["faculties", "departments", "specialities", "groups"]
+    faculty_id: int | None = Field(None, description="ID факультета (обязательно для directory_name='specialities')")
+    specialty_id: int | None = Field(None, description="ID специальности (обязательно для directory_name='groups')")
 
 
 @registry.tool(
     name="directories_get",
-    description="Returns directory items from PostgreSQL. Supported: faculties, departments, specialities, groups, employees.",
+    description=(
+        "Получение списков структурных подразделений университета. "
+        "Используйте для навигации по иерархии: Факультеты -> Специальности -> Группы. "
+        "Не используйте для поиска людей."
+    ),
     args_model=DirectoriesGetArgs
 )
 async def handle_directories(ctx: ToolContext, args: DirectoriesGetArgs):
@@ -29,5 +32,3 @@ async def handle_directories(ctx: ToolContext, args: DirectoriesGetArgs):
             return await service.get_specialities(faculty_id=args.faculty_id)
         elif args.directory_name == "groups":
             return await service.get_groups(specialty_id=args.specialty_id)
-        elif args.directory_name == "employees":
-            return await service.get_employees_by_department(department_id=args.department_id)

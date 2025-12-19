@@ -10,7 +10,11 @@ class SystemCurrentWeekArgs(BaseModel):
 
 @registry.tool(
     name="system_current_week",
-    description="Returns current academic week number.",
+    description=(
+        "Возвращает номер текущей учебной недели (1-4). "
+        "Используйте этот инструмент ПЕРВЫМ при любых вопросах, связанных с датами, "
+        "расписанием на 'сегодня', 'завтра' или 'эту неделю', чтобы правильно фильтровать занятия."
+    ),
     args_model=SystemCurrentWeekArgs
 )
 async def handle_current_week(ctx: ToolContext, args: SystemCurrentWeekArgs):
