@@ -13,10 +13,10 @@ from app.core.config import Settings
 
 @dataclass
 class ToolContext:
+    """Контекст, доступный внутри функции инструмента"""
     db_engine: AsyncEngine
     redis: Redis
     settings: Settings
-
 
 class ToolRegistry:
     def __init__(self):
@@ -26,10 +26,11 @@ class ToolRegistry:
 
     def tool(self, name: str, description: str, args_model: Type[BaseModel]):
         def decorator(func):
+            # 1. Генерируем JSON Schema из Pydantic модели
             schema = args_model.model_json_schema()
             
-            if "title" in schema:
-                del schema["title"]
+            # 2. Очищаем схему для совместимости с LLM (Gemini/OpenAI)
+            schema = self._sanitize_schema(schema)
 
             self._tools_metadata.append(
                 types.Tool(
@@ -38,11 +39,47 @@ class ToolRegistry:
                     inputSchema=schema
                 )
             )
-
             self._handlers[name] = func
             self._arg_models[name] = args_model
             return func
         return decorator
+
+    def _sanitize_schema(self, schema: dict) -> dict:
+        """
+        Удаляет конструкции Pydantic (anyOf, type: [t, null]), которые ломают Gemini/n8n.
+        Превращает Optional[T] просто в T.
+        """
+        new_schema = schema.copy()
+        
+        if "title" in new_schema:
+            del new_schema["title"]
+            
+        if "properties" in new_schema:
+            for prop_name, prop_def in new_schema["properties"].items():
+                # Исправляем type: ["string", "null"] -> type: "string"
+                if isinstance(prop_def.get("type"), list):
+                    valid_types = [t for t in prop_def["type"] if t != "null"]
+                    if valid_types:
+                        prop_def["type"] = valid_types[0]
+                
+                # Исправляем anyOf: [{type: string}, {type: null}] -> type: "string"
+                if "anyOf" in prop_def:
+                    for option in prop_def["anyOf"]:
+                        if option.get("type") and option.get("type") != "null":
+                            # Копируем свойства из варианта (type, format и т.д.)
+                            prop_def.update(option)
+                            break
+                    del prop_def["anyOf"]
+                    
+                # Чистим title внутри свойств (мусор для LLM)
+                if "title" in prop_def:
+                    del prop_def["title"]
+
+        # Если есть определения ($defs), их тоже надо почистить (обычно Pydantic инлайнит, но на всякий случай)
+        if "$defs" in new_schema:
+            del new_schema["$defs"]
+
+        return new_schema
 
     @property
     def tools(self) -> list[types.Tool]:
@@ -56,13 +93,13 @@ class ToolRegistry:
             raise ValueError(f"Unknown tool: {name}")
 
         try:
+            # Pydantic сам разберется с типами при валидации
             validated_args = model.model_validate(arguments)
         except Exception as e:
             raise ValueError(f"Invalid arguments for tool {name}: {e}")
 
         try:
             result = await handler(context, validated_args)
-            
             return [self._format_result(result)]
         except Exception as e:
             return [types.TextContent(type="text", text=json.dumps({"error": str(e)}, ensure_ascii=False))]
@@ -74,8 +111,6 @@ class ToolRegistry:
             data = value.model_dump(mode="json")
         else:
             data = value
-        
         return types.TextContent(type="text", text=json.dumps(data, ensure_ascii=False))
-
 
 registry = ToolRegistry()

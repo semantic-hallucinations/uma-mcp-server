@@ -9,6 +9,7 @@ import app.mcp_server.tools.employees_tool
 import app.mcp_server.tools.schedule_tool
 import app.mcp_server.tools.structure_tool
 import app.mcp_server.tools.system_tool
+import app.mcp_server.tools.events
 
 
 def create_mcp_server(runtime) -> Server:
