@@ -29,7 +29,8 @@ class StructureService:
 
     async def get_groups(self, specialty_id: int | None = None) -> list[Group]:
         query = select(student_groups).where(student_groups.c.valid_to.is_(None))
-        query = query.order_by(student_groups.c.id)
+        
+        query = query.order_by(student_groups.c.name)
         
         if specialty_id is not None:
             query = query.where(student_groups.c.specialty_id == specialty_id)

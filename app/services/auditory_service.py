@@ -1,4 +1,4 @@
-from datetime import datetime # <--- Добавляем импорт
+from datetime import datetime
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncConnection
 

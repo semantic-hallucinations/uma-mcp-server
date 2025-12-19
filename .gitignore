@@ -208,3 +208,5 @@ __marimo__/
 
 # Project-specific folders
 test_sql_scripts/
+n8n-data/
+data/

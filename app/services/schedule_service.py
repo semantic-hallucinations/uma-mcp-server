@@ -1,6 +1,5 @@
 import json
 from typing import Any, Literal
-
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import select
@@ -27,7 +26,8 @@ class ScheduleService:
         self.settings = settings
 
     async def get_schedule(self, entity_type: EntityType, entity_identifier: str) -> Any:
-        redis_key, db_id = await self._resolve_identifier(entity_type, entity_identifier)
+
+        redis_key, db_lookup_val = await self._resolve_identifier(entity_type, entity_identifier)
 
         try:
             cached = await self.redis.get(redis_key)
@@ -36,8 +36,8 @@ class ScheduleService:
         except (RedisError, json.JSONDecodeError):
             pass 
 
-        if db_id:
-            schedule_data = await self._fetch_from_db_scd2(entity_type, db_id)
+        if db_lookup_val is not None:
+            schedule_data = await self._fetch_from_db_scd2(entity_type, db_lookup_val)
             if schedule_data:
                 try:
                     await self.redis.setex(
@@ -52,21 +52,17 @@ class ScheduleService:
 
         raise ValueError("Schedule not found")
 
-    async def _resolve_identifier(self, entity_type: str, identifier: str) -> tuple[str, int | None]:
+    async def _resolve_identifier(self, entity_type: str, identifier: str) -> tuple[str, str | int | None]:
         """
-        Возвращает (Redis Key, Database ID)
+        Возвращает (Redis Key, Database Lookup Value)
+        Database Lookup Value: 
+           - для групп: строка имени ("221703")
+           - для сотрудников: int ID (5050)
         """
         if entity_type == "group":
-            query = (
-                select(student_groups.c.id)
-                .where(student_groups.c.name == identifier)
-                .where(student_groups.c.valid_to.is_(None))
-            )
-            res = await self.conn.execute(query)
-            row = res.mappings().first()
             
             key = RedisKeys.schedule(entity_type, identifier)
-            return key, row["id"] if row else None
+            return key, identifier
 
         if entity_type == "employee":
             _, resolved_url_id, matches = await resolve_employee_identifier(self.conn, identifier)
@@ -84,20 +80,20 @@ class ScheduleService:
 
         raise ValueError("Unknown entity type")
 
-    async def _fetch_from_db_scd2(self, entity_type: str, entity_id: int) -> Any | None:
+    async def _fetch_from_db_scd2(self, entity_type: str, lookup_val: str | int) -> Any | None:
         """
-        Ищет актуальное расписание (valid_to IS NULL) для сущности.
+        Ищет актуальное расписание (valid_to IS NULL).
         """
         query = select(schedule_storage.c.data).where(
             schedule_storage.c.valid_to.is_(None)
         )
 
         if entity_type == "group":
-            query = query.where(schedule_storage.c.group_id == entity_id)
+            query = query.where(schedule_storage.c.group_name == str(lookup_val))
         else:
-            query = query.where(schedule_storage.c.employee_id == entity_id)
+            query = query.where(schedule_storage.c.employee_id == int(lookup_val))
 
-        query = query.order_by(schedule_storage.c.api_last_update_ts.desc()).limit(1)
+        query = query.order_by(schedule_storage.c.api_last_update_ts.desc().nulls_last()).limit(1)
 
         result = await self.conn.execute(query)
         row = result.mappings().first()
