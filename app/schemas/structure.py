@@ -37,3 +37,17 @@ class Employee(BaseSchema):
     degree: str | None = None
     rank: str | None = None
     calendar_id: str | None = None
+
+class Auditory(BaseSchema):
+    id: int
+    name: str
+    building_number: str | None = None
+    auditory_type: str | None = None
+    capacity: int | None = None
+
+class GroupInfo(BaseModel):
+    group_name: str
+    course: int | None = None
+    specialty_name: str
+    specialty_abbr: str
+    faculty_abbr: str

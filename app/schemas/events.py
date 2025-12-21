@@ -21,3 +21,9 @@ class ScheduleEventItem(BaseModel):
     teachers_display_names: list[str] = Field(default_factory=list, description="List of teachers names (FIO)")
     
     lesson_type: str | None = None
+
+class EmployeeFromEvent(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    middle_name: str | None = None
+    url_id: str | None = None

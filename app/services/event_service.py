@@ -1,11 +1,12 @@
 from datetime import time, datetime
 from typing import Literal, Any
 
-from sqlalchemy import select, and_, or_, func, cast, Time
+from sqlalchemy import select, and_, or_, func, cast, Time, distinct
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db.tables import schedule_events, employees
-from app.schemas.events import ScheduleEventItem
+from app.schemas.events import ScheduleEventItem, EmployeeFromEvent
 
 
 class EventService:
@@ -19,7 +20,6 @@ class EventService:
         """
         return select(
             schedule_events,
-            # Достаем поля сотрудника (если есть совпадение)
             employees.c.last_name,
             employees.c.first_name,
             employees.c.middle_name
@@ -38,42 +38,32 @@ class EventService:
         # Преобразуем RowMapping в dict
         row_dict = dict(row)
         
-        # 1. Формируем entity_display_name
-        # Если join сработал (есть фамилия), собираем ФИО
         if row_dict.get("last_name"):
             parts = [
                 row_dict["last_name"], 
                 row_dict.get("first_name"), 
                 row_dict.get("middle_name")
             ]
-            # Убираем None и склеиваем
             display_name = " ".join(filter(None, parts))
         else:
-            # Иначе оставляем как есть (например, номер группы)
             display_name = row_dict["entity_name"]
 
-        # 2. Обрабатываем related_employees (JSON)
-        # Ожидаем структуру: [{"firstName": "Иван", "lastName": "Иванов", ...}, ...]
         teachers_display = []
         raw_related = row_dict.get("related_employees")
         
         if isinstance(raw_related, list):
             for t in raw_related:
                 if isinstance(t, dict):
-                    # Пытаемся собрать ФИО из JSON
                     t_parts = [
                         t.get("lastName"), 
                         t.get("firstName"), 
                         t.get("middleName")
                     ]
-                    # Если есть хотя бы фамилия
                     if any(t_parts):
                         teachers_display.append(" ".join(filter(None, t_parts)))
                     elif t.get("urlId"):
-                        # Фолбек на urlId, если имен нет
                         teachers_display.append(t["urlId"])
         
-        # Создаем модель
         return ScheduleEventItem(
             **row_dict,
             entity_display_name=display_name,
@@ -103,7 +93,6 @@ class EventService:
         query = query.order_by(schedule_events.c.day_of_week, schedule_events.c.start_time)
 
         result = await self.conn.execute(query)
-        # Используем helper для обработки каждой строки
         return [self._process_row(r) for r in result.mappings().all()]
 
     async def get_auditory_events(
@@ -176,3 +165,24 @@ class EventService:
         
         result = await self.conn.execute(query)
         return [self._process_row(r) for r in result.mappings().all()]
+
+
+    async def get_employees_by_group(self, group_name: str) -> list[EmployeeFromEvent]:
+        elem = func.jsonb_array_elements(
+            cast(schedule_events.c.related_employees, JSONB)
+        ).column_valued("elem")
+        
+        query = (
+            select(
+                distinct(elem.op("->>")("urlId")).label("url_id"),
+                elem.op("->>")("lastName").label("last_name"),
+                elem.op("->>")("firstName").label("first_name"),
+                elem.op("->>")("middleName").label("middle_name")
+            )
+            .select_from(schedule_events)
+            .where(schedule_events.c.entity_name == group_name)
+            .where(schedule_events.c.related_employees.is_not(None))
+        )
+        
+        result = await self.conn.execute(query)
+        return [EmployeeFromEvent(**dict(r)) for r in result.mappings().all()]

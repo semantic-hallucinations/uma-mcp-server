@@ -50,6 +50,7 @@ async def handle_auditory_occupancy(ctx: ToolContext, args: AuditoryOccupancyArg
             time_check=args.time
         )
 
+
 class ScheduleDayArgs(BaseModel):
     entity_name: str = Field(..., description="Номер группы (например '221703') или url_id преподавателя")
     day_of_week: int = Field(..., description="Порядковый номер дня недели (1=Понедельник, 7=Воскресенье)")
@@ -73,6 +74,7 @@ async def handle_schedule_day(ctx: ToolContext, args: ScheduleDayArgs):
             day_of_week=args.day_of_week
         )
 
+
 class GlobalSubjectSearchArgs(BaseModel):
     q: str = Field(..., description="Название предмета")
     limit: int = Field(10, le=50)
@@ -90,3 +92,20 @@ async def handle_global_search(ctx: ToolContext, args: GlobalSubjectSearchArgs):
     async with ctx.db_engine.connect() as conn:
         service = EventService(conn)
         return await service.global_subject_search(args.q, args.limit)
+
+
+class GroupTeachersArgs(BaseModel):
+    group_name: str = Field(..., description="Номер группы (например '221703')")
+
+@registry.tool(
+    name="group_teachers_get",
+    description="Получение списка всех преподавателей, которые ведут занятия у указанной группы, на основе расписания.",
+    args_model=GroupTeachersArgs
+)
+async def handle_group_teachers(ctx: ToolContext, args: GroupTeachersArgs):
+    async with ctx.db_engine.connect() as conn:
+        service = EventService(conn)
+        teachers = await service.get_employees_by_group(args.group_name)
+        if not teachers:
+            return {"message": "Преподаватели не найдены (возможно, нет расписания)."}
+        return teachers

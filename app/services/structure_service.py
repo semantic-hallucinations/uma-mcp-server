@@ -1,13 +1,46 @@
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.db.tables import faculties, departments, specialities, student_groups, employees, departments_employees
-from app.schemas.structure import Faculty, Department, Specialty, Group, Employee
+from app.db.tables import (faculties, departments, specialities, 
+                           student_groups, employees, departments_employees,
+                           auditories)
+from app.schemas.structure import (Faculty, Department, Auditory,
+                                   Specialty, Group, Employee,
+                                   GroupInfo)
 
 
 class StructureService:
     def __init__(self, conn: AsyncConnection):
         self.conn = conn
+
+    async def get_auditories(self) -> list[Auditory]:
+        query = select(auditories).order_by(auditories.c.name)
+        result = await self.conn.execute(query)
+        return [Auditory.model_validate(r) for r in result.mappings().all()]
+
+    async def get_group_info(self, group_name: str) -> GroupInfo | None:
+        query = (
+            select(
+                student_groups.c.name.label("group_name"),
+                student_groups.c.course,
+                specialities.c.name.label("specialty_name"),
+                specialities.c.abbr.label("specialty_abbr"),
+                faculties.c.abbr.label("faculty_abbr")
+            )
+            .select_from(
+                student_groups
+                .join(specialities, student_groups.c.specialty_id == specialities.c.id)
+                .join(faculties, specialities.c.faculty_id == faculties.c.id)
+            )
+            .where(student_groups.c.name == group_name)
+            .where(student_groups.c.valid_to.is_(None))
+        )
+
+        result = await self.conn.execute(query)
+        row = result.mappings().first()
+        return GroupInfo(**dict(row)) if row else None
 
     async def get_faculties(self) -> list[Faculty]:
         query = select(faculties).order_by(faculties.c.id)

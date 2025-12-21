@@ -1,24 +1,43 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.mcp_server.sdk import registry, ToolContext
 from app.services.employee_service import EmployeeService
 
 
-class EmployeesSearchArgs(BaseModel):
-    q: str = Field(..., min_length=1, description="Часть ФИО преподавателя (например, 'Иванов' или 'Иванов И.И.')")
-    limit: int = Field(10, ge=1, le=50, description="Максимальное количество результатов")
+class EmployeesFindArgs(BaseModel):
+    q: str | None = Field(None, description=(
+        "Часть ФИО (например, 'Иванов'). "
+        "Если не указано, вернет всех сотрудников кафедры (требуется department_id)."
+    ))
+    department_id: int | None = Field(None, description=(
+        "ID кафедры для фильтрации. Если указано, ищет только внутри этой кафедры." \
+        "Можно узнать из инструмента directories_get, который вернёт все кафедры"
+    ))
+    limit: int | None = Field(None, description=(
+        "Количество сотрудников, которое нужно найти. Оставляй пустым, если не указано иначе."
+    ))
+
+    @model_validator(mode='after')
+    def check_args(self):
+        if not self.q and not self.department_id:
+            raise ValueError("Нужно указать хотя бы один параметр: 'q' (ФИО) или 'department_id'.")
+        return self
 
 
 @registry.tool(
-    name="employees_search",
+    name="employees_find",
     description=(
-        "Поиск преподавателей (сотрудников) по ФИО. "
-        "Используйте этот инструмент, когда пользователь спрашивает о преподавателе, "
-        "чтобы узнать его точный `url_id` или `id` для дальнейших запросов расписания."
+        "Поиск преподавателей и сотрудников. "
+        "Позволяет найти человека по ФИО, получить список всех сотрудников определенной кафедры "
+        "или найти конкретного человека внутри кафедры."
     ),
-    args_model=EmployeesSearchArgs
+    args_model=EmployeesFindArgs
 )
-async def handle_employees_search(ctx: ToolContext, args: EmployeesSearchArgs):
+async def handle_employees_find(ctx: ToolContext, args: EmployeesFindArgs):
     async with ctx.db_engine.connect() as conn:
         service = EmployeeService(conn)
-        return await service.search(args.q, limit=args.limit)
+        return await service.search(
+            q=args.q, 
+            department_id=args.department_id, 
+            limit=500 if args.limit is None else int(args.limit)
+        )
